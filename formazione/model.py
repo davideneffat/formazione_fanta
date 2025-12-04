@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+from typing import List, Dict, Tuple
 from openai import AsyncOpenAI, BadRequestError
 from dotenv import load_dotenv
 import httpx
@@ -17,42 +18,6 @@ client = AsyncOpenAI(
     api_key=os.getenv("GROQ_API_KEY"),
     base_url="https://api.groq.com/openai/v1"
 )
-
-ROSTER = {
-    "Por": [
-        ("Audero", "Cremonese"), 
-        ("Svilar", "Roma"), 
-        ("Vasquez D.", "Roma")
-    ],
-    "Dif": [
-        ("Angori", "Pisa"),
-        ("Biraghi", "Torino"), 
-        ("Dodò", "Fiorentina"), 
-        ("Mancini", "Roma"), 
-        ("Pavlovic", "Milan"),
-        ("Pezzella Giu.", "Cremonese"), 
-        ("Zemura", "Udinese"),
-        ("Gaspar K.", "Lecce") 
-    ],
-    "Cen": [
-        ("Bailey", "Roma"), 
-        ("Bernabè", "Parma"), 
-        ("Dele-Bashiru", "Lazio"),
-        ("Gronbaek", "Genoa"), 
-        ("Modric", "Milan"), 
-        ("Thuram K.", "Juventus"), 
-        ("Vazquez", "Cremonese"), 
-        ("Zaccagni", "Lazio")
-    ],
-    "Att": [
-        ("Castro S.", "Bologna"), 
-        ("De Ketelaere", "Atalanta"),
-        ("Dovbyk", "Roma"), 
-        ("Hojlund", "Napoli"), 
-        ("Nzola", "Pisa"), 
-        ("Zapata D.", "Torino")
-    ],
-}
 
 
 async def get_next_matchday_fixtures():
@@ -89,7 +54,7 @@ async def get_next_matchday_fixtures():
         return "Errore sconosciuto durante il recupero delle partite."
 
 
-async def get_best_lineup():
+async def get_best_lineup(ROSTER: Dict[str, List[Tuple[str, str]]]):
     """Genera la formazione tenendo conto delle partite della prossima giornata."""
     
     # 1. Recupera le partite

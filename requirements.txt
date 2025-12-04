@@ -4,3 +4,5 @@ uvicorn
 fastapi
 dotenv
 openai
+thefuzz[speedup]
+pandas

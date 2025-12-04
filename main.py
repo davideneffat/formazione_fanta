@@ -4,9 +4,10 @@ from fastapi import FastAPI
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from dotenv import load_dotenv
-
-from model import get_best_lineup
+from formazione.model import get_best_lineup
 import logging
+
+from quote.model import run_scraper_for_roster, format_roster_quotes_for_telegram
 
 # Configura il logging di base per vedere più informazioni
 logging.basicConfig(
@@ -21,6 +22,25 @@ print(f"--- TOKEN LETTO: {'Sì, è presente' if TELEGRAM_TOKEN else 'NO, MANCANT
 
 if not TELEGRAM_TOKEN:
     raise ValueError("Manca il TELEGRAM_TOKEN nelle variabili d'ambiente!")
+
+ROSTER = {
+    "Por": [("Audero", "Cremonese"), ("Svilar", "Roma"), ("Vasquez D.", "Roma")],
+    "Dif": [
+        ("Angori", "Pisa"), ("Biraghi", "Torino"), ("Dodo Cordeiro", "Fiorentina"), 
+        ("Mancini", "Roma"), ("Pavlovic", "Milan"), ("Pezzella Giu.", "Cremonese"), 
+        ("Zemura", "Udinese"), ("Gaspar K.", "Lecce") 
+    ],
+    "Cen": [
+        ("Bailey", "Roma"), ("Bernabe", "Parma"), ("Dele-Bashiru", "Lazio"),
+        ("Gronbaek Erlykke", "Genoa"), ("Modric", "Milan"), ("Thuram Kephren", "Juventus"), 
+        ("Vazquez Franco", "Cremonese"), ("Zaccagni", "Lazio")
+    ],
+    "Att": [
+        ("Castro S.", "Bologna"), ("De Ketelaere", "Atalanta"),
+        ("Dovbyk", "Roma"), ("Hojlund Rasmus", "Napoli"), ("Nzola M.", "Pisa"), 
+        ("Zapata D.", "Torino")
+    ],
+}
 
 # Setup FastAPI
 app = FastAPI()
@@ -37,7 +57,7 @@ async def formazione_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     msg = await update.message.reply_text("🤔 Sto analizzando la rosa...")
     
-    lineup_text = await get_best_lineup()
+    lineup_text = await get_best_lineup(ROSTER)
     
     # Decidiamo se usare Markdown o no
     parse_mode_to_use = "Markdown"
@@ -63,9 +83,43 @@ async def formazione_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             text="Si è verificato un errore durante la formattazione della risposta."
         )
 
+
+async def quote_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logging.info(f"Comando /quote ricevuto da {update.effective_user.username}")
+    
+    msg = await update.message.reply_text("⏳ Sto recuperando e abbinando le quote per la tua rosa...")
+
+    try:
+        # Esegui la nuova funzione passando il ROSTER
+        roster_quotes = await asyncio.to_thread(run_scraper_for_roster, ROSTER)
+
+        if roster_quotes:
+            final_text = format_roster_quotes_for_telegram(roster_quotes)
+            parse_mode = "Markdown"
+        else:
+            final_text = "⚠️ Si è verificato un errore durante il recupero dei dati. Riprova più tardi."
+            parse_mode = None
+
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=msg.message_id,
+            text=final_text,
+            parse_mode=parse_mode
+        )
+
+    except Exception as e:
+        logging.error(f"Errore generale nel comando /quote: {e}", exc_info=True)
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=msg.message_id,
+            text="❌ Ops! Qualcosa è andato storto. Impossibile completare la richiesta."
+        )
+
+
 # Registra i comandi
 telegram_app.add_handler(CommandHandler("start", start_command))
 telegram_app.add_handler(CommandHandler("formazione", formazione_command))
+telegram_app.add_handler(CommandHandler("quote", quote_command))
 
 # Endpoint per Healthcheck (per Render/Heroku)
 @app.get("/")
