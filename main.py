@@ -17,6 +17,8 @@ logging.basicConfig(
 
 load_dotenv()
 
+RENDER_URL = "fanta-formazione.onrender.com"
+WEBHOOK_URL = f"https://{RENDER_URL}/webhook"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 print(f"--- TOKEN LETTO: {'Sì, è presente' if TELEGRAM_TOKEN else 'NO, MANCANTE!'} ---") # CONTROLLO 1
 
@@ -49,98 +51,59 @@ app = FastAPI()
 telegram_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logging.info(f"Comando /start ricevuto da {update.effective_user.username}")
     await update.message.reply_text("Ciao! Usa /formazione per generare la tua squadra.")
 
 async def formazione_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logging.info(f"Comando /formazione ricevuto da {update.effective_user.username}")
-    
     msg = await update.message.reply_text("🤔 Sto analizzando la rosa...")
-    
     lineup_text = await get_best_lineup(ROSTER)
-    
-    # Decidiamo se usare Markdown o no
-    parse_mode_to_use = "Markdown"
-    final_text = f"📋 *Formazione Consigliata:*\n{lineup_text}"
-
-    # Se la risposta è un messaggio di errore, non usare Markdown per sicurezza
-    if lineup_text.lower().startswith("errore"):
-        parse_mode_to_use = None # Disattiva il parsing
-        final_text = f"⚠️ {lineup_text}" # Formatta come semplice errore
-
-    try:
-        await context.bot.edit_message_text(
-            chat_id=update.effective_chat.id,
-            message_id=msg.message_id,
-            text=final_text,
-            parse_mode=parse_mode_to_use
-        )
-    except Exception as e:
-        logging.error(f"Errore durante l'invio del messaggio a Telegram: {e}")
-        # Invia un messaggio di fallback se l'edit fallisce
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="Si è verificato un errore durante la formattazione della risposta."
-        )
-
+    await context.bot.edit_message_text(
+        chat_id=update.effective_chat.id,
+        message_id=msg.message_id,
+        text=f"📋 *Formazione Consigliata:*\n{lineup_text}",
+        parse_mode="Markdown"
+    )
 
 async def quote_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logging.info(f"Comando /quote ricevuto da {update.effective_user.username}")
-    
-    msg = await update.message.reply_text("⏳ Sto recuperando e abbinando le quote per la tua rosa...")
+    msg = await update.message.reply_text("⏳ Recupero le quote…")
+    roster_quotes = await asyncio.to_thread(run_scraper_for_roster, ROSTER)
+    final_text = format_roster_quotes_for_telegram(roster_quotes)
+    await context.bot.edit_message_text(
+        chat_id=update.effective_chat.id,
+        message_id=msg.message_id,
+        text=final_text,
+        parse_mode="Markdown"
+    )
 
-    try:
-        # Esegui la nuova funzione passando il ROSTER
-        roster_quotes = await asyncio.to_thread(run_scraper_for_roster, ROSTER)
-
-        if roster_quotes:
-            final_text = format_roster_quotes_for_telegram(roster_quotes)
-            parse_mode = "Markdown"
-        else:
-            final_text = "⚠️ Si è verificato un errore durante il recupero dei dati. Riprova più tardi."
-            parse_mode = None
-
-        await context.bot.edit_message_text(
-            chat_id=update.effective_chat.id,
-            message_id=msg.message_id,
-            text=final_text,
-            parse_mode=parse_mode
-        )
-
-    except Exception as e:
-        logging.error(f"Errore generale nel comando /quote: {e}", exc_info=True)
-        await context.bot.edit_message_text(
-            chat_id=update.effective_chat.id,
-            message_id=msg.message_id,
-            text="❌ Ops! Qualcosa è andato storto. Impossibile completare la richiesta."
-        )
-
-
-# Registra i comandi
 telegram_app.add_handler(CommandHandler("start", start_command))
 telegram_app.add_handler(CommandHandler("formazione", formazione_command))
 telegram_app.add_handler(CommandHandler("quote", quote_command))
 
-# Endpoint per Healthcheck (per Render/Heroku)
-@app.get("/")
-def home():
-    return {"status": "Bot is running", "service": "Fantacalcio AI"}
-
-# --- Gestione Ciclo di Vita (Startup/Shutdown) ---
+# ----- FASTAPI ENDPOINTS -----
 
 @app.on_event("startup")
-async def startup_event():
-    """Avvia il bot Telegram quando parte FastAPI"""
-    print("Avvio del bot Telegram...")
+async def startup():
+    logging.info("Imposto webhook su Telegram…")
     await telegram_app.initialize()
     await telegram_app.start()
-    # Inizia a ricevere aggiornamenti (Polling) in background
-    await telegram_app.updater.start_polling()
+    await telegram_app.bot.set_webhook(WEBHOOK_URL)
+
 
 @app.on_event("shutdown")
-async def shutdown_event():
-    """Ferma il bot Telegram quando FastAPI si spegne"""
-    print("Spegnimento del bot Telegram...")
-    await telegram_app.updater.stop()
+async def shutdown():
+    logging.info("Rimuovo webhook e chiudo bot…")
+    await telegram_app.bot.delete_webhook()
     await telegram_app.stop()
     await telegram_app.shutdown()
+
+
+@app.post("/webhook")
+async def telegram_webhook(request: Request):
+    data = await request.json()
+    update = Update.de_json(data, telegram_app.bot)
+    await telegram_app.process_update(update)
+    return {"ok": True}
+
+
+@app.get("/")
+def home():
+    return {"status": "online"}
