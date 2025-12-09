@@ -103,6 +103,15 @@ async def telegram_webhook(request: Request):
     await telegram_app.process_update(update)
     return {"ok": True}
 
+@app.get("/health")
+def health_check():
+    """
+    Endpoint leggero per il keep-alive. 
+    Risponde immediatamente senza fare nulla.
+    """
+    logging.info("Health check ping ricevuto.") # Utile per vedere nei log che UptimeRobot sta funzionando
+    return {"status": "I'm alive!"}
+
 
 @app.get("/")
 def home():
