@@ -103,7 +103,7 @@ async def telegram_webhook(request: Request):
     await telegram_app.process_update(update)
     return {"ok": True}
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health_check():
     """
     Endpoint leggero per il keep-alive. 
