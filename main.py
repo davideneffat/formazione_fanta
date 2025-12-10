@@ -103,6 +103,8 @@ async def telegram_webhook(request: Request):
     await telegram_app.process_update(update)
     return {"ok": True}
 
+logging.info("!!! Rotta /webhook registrata correttamente. !!!")
+
 @app.api_route("/health", methods=["GET", "HEAD"])
 def health_check():
     """
@@ -112,7 +114,10 @@ def health_check():
     logging.info("Health check ping ricevuto.") # Utile per vedere nei log che UptimeRobot sta funzionando
     return {"status": "I'm alive!"}
 
+logging.info("!!! Rotta /health registrata correttamente. !!!")
 
 @app.get("/")
 def home():
     return {"status": "online"}
+
+logging.info("!!! Rotta / registrata correttamente. !!!")
